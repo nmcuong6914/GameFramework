@@ -1,0 +1,10 @@
+{
+  "name": "com.blocksort.gameframework",
+  "version": "1.0.0",
+  "displayName": "BlockSort Game Framework",
+  "description": "Core architecture, SDK wrappers, and generic systems for Unity games.",
+  "unity": "6000.0",
+  "dependencies": {
+    "com.cysharp.unitask": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask#2.5.11"
+  }
+}

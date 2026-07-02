@@ -1,0 +1,20 @@
+{
+  "name": "com.blocksort.gameframework",
+  "references": [
+    "UniTask",
+    "Unity.Addressables",
+    "Unity.ResourceManager",
+    "Unity.Purchasing",
+    "Unity.Notifications.Android",
+    "Unity.Notifications.iOS"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
