@@ -6,7 +6,8 @@
     "Unity.ResourceManager",
     "Unity.Purchasing",
     "Unity.Notifications.Android",
-    "Unity.Notifications.iOS"
+    "Unity.Notifications.iOS",
+    "GUID:b85c76fbb70324f448c7128afa47f69c"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
