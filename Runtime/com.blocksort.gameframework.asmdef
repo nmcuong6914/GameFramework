@@ -7,7 +7,8 @@
     "Unity.Purchasing",
     "Unity.Notifications.Android",
     "Unity.Notifications.iOS",
-    "GUID:760a4c7888534400e882b82c5b3fba06"
+    "GUID:d1545ea83a2bc1d4f8003f6fad87fda8",
+    "Amplitude"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

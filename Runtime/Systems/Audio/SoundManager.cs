@@ -115,22 +115,18 @@ public class SoundManager : MonoBehaviour
         await UniTask.CompletedTask;
     }
     
-    /// <summary>
-    /// Load audio settings from PlayerData
-    /// </summary>
     private void LoadAudioSettings()
     {
-        var playerDataManager = ServiceLocator.TryResolve<PlayerDataManager>();
-        if (playerDataManager != null && playerDataManager.IsInitialized && playerDataManager.PlayerData != null)
+        var audioSettingsProvider = ServiceLocator.TryResolve<GameFramework.Audio.IAudioSettingsProvider>();
+        if (audioSettingsProvider != null)
         {
-            var playerData = playerDataManager.PlayerData;
-            muteMusic = !playerData.IsMusicEnabled;
-            muteSFX = !playerData.IsSoundEnabled;
+            muteMusic = !audioSettingsProvider.IsMusicEnabled;
+            muteSFX = !audioSettingsProvider.IsSoundEnabled;
             
-            Debug.Log($"[SoundManager] Loaded audio settings from PlayerData - Music: {(playerData.IsMusicEnabled ? "enabled" : "disabled")}, Sound: {(playerData.IsSoundEnabled ? "enabled" : "disabled")}");
+            Debug.Log($"[SoundManager] Loaded audio settings from IAudioSettingsProvider - Music: {(audioSettingsProvider.IsMusicEnabled ? "enabled" : "disabled")}, Sound: {(audioSettingsProvider.IsSoundEnabled ? "enabled" : "disabled")}");
             
             // Start background music if music is enabled
-            if (playerData.IsMusicEnabled && !IsMusicPlaying())
+            if (audioSettingsProvider.IsMusicEnabled && !IsMusicPlaying())
             {
                 // Delay music start slightly to ensure everything is properly initialized
                 StartBackgroundMusicDelayed().Forget();

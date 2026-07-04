@@ -37,7 +37,29 @@ namespace Purchase
         // Properties
         public bool IsInitialized => isInitialized;
         public bool IsInitializing => isInitializing;
+        public bool IsPaid
+        {
+            get
+            {
+                if (purchaseHistory == null || iapConfig == null) return false;
+                
+                var nonConsumableIds = iapConfig.iapPackages
+                    .Where(p => p.productType == ProductType.NonConsumable)
+                    .Select(p => p.productId)
+                    .ToList();
+                
+                var platformIds = iapConfig.iapPackages
+                    .Where(p => p.productType == ProductType.NonConsumable)
+                    .Select(p => p.GetPlatformProductId())
+                    .ToList();
+                
+                return purchaseHistory.Transactions
+                    .Any(t => t.IsValid && (nonConsumableIds.Contains(t.ProductId) || platformIds.Contains(t.ProductId)));
+            }
+        }
         public PurchaseHistory History => purchaseHistory;
+        
+        public event Action<Dictionary<CurrencyType, int>, string, string> LootRewardEarned;
         
         private void Awake()
         {
@@ -540,10 +562,10 @@ namespace Purchase
             
             try
             {
-                var playerDataManager = ServiceLocator.TryResolve<PlayerDataManager>();
-                if (playerDataManager == null)
+                var purchaseDataProvider = ServiceLocator.TryResolve<BlockSort.Purchase.IPurchaseDataProvider>();
+                if (purchaseDataProvider == null)
                 {
-                    Debug.LogError($"PurchaseManager: PlayerDataManager not found - cannot process loot rewards for {source}");
+                    Debug.LogError($"PurchaseManager: IPurchaseDataProvider not found - cannot process loot rewards for {source}");
                     return;
                 }
                 
@@ -577,8 +599,8 @@ namespace Purchase
                 
                 if (currencyRewards.Count > 0)
                 {
-                    // Apply the rewards using PlayerDataManager
-                    playerDataManager.ApplyLootRewards(currencyRewards, $"{source} ({shopPackage.packageId})");
+                    // Apply the rewards using data provider
+                    purchaseDataProvider.ApplyLootRewards(currencyRewards, $"{source} ({shopPackage.packageId})");
                     
                     // Fire loot reward signal to show popup
                     FireLootRewardSignal(currencyRewards, source, shopPackage.title);
@@ -617,10 +639,10 @@ namespace Purchase
         {
             try
             {
-                var playerDataManager = ServiceLocator.TryResolve<PlayerDataManager>();
-                if (playerDataManager != null && playerDataManager.PlayerData != null)
+                var purchaseDataProvider = ServiceLocator.TryResolve<BlockSort.Purchase.IPurchaseDataProvider>();
+                if (purchaseDataProvider != null)
                 {
-                    playerDataManager.PlayerData.MarkAsPaid();
+                    purchaseDataProvider.MarkAsPaid();
                     
                     if (enableDebugLogging)
                     {
@@ -629,7 +651,7 @@ namespace Purchase
                 }
                 else
                 {
-                    Debug.LogError("PurchaseManager: PlayerDataManager not available - cannot mark player as paid");
+                    Debug.LogError("PurchaseManager: IPurchaseDataProvider not available - cannot mark player as paid");
                 }
             }
             catch (Exception e)
@@ -726,32 +748,17 @@ namespace Purchase
         {
             try
             {
-                var signalBus = ServiceLocator.TryResolve<SignalBus>();
-                if (signalBus != null)
+                var displayTitle = !string.IsNullOrEmpty(title) ? title : "Congratulations!";
+                LootRewardEarned?.Invoke(currencyRewards, source, displayTitle);
+                
+                if (enableDebugLogging)
                 {
-                    var displayTitle = !string.IsNullOrEmpty(title) ? title : "Congratulations!";
-                    var signal = new LootRewardSignal(currencyRewards, source, displayTitle);
-                    signalBus.Fire(signal);
-                    
-                    if (enableDebugLogging)
-                    {
-                        Debug.Log($"PurchaseManager: Fired loot reward signal for {source}");
-                    }
-                }
-                else
-                {
-                    if (enableDebugLogging)
-                    {
-                        Debug.LogWarning("PurchaseManager: SignalBus not found - cannot show loot reward popup");
-                    }
+                    Debug.Log($"PurchaseManager: Invoked LootRewardEarned event for {source}");
                 }
             }
             catch (Exception e)
             {
-                if (enableDebugLogging)
-                {
-                    Debug.LogError($"PurchaseManager: Failed to fire loot reward signal: {e.Message}");
-                }
+                Debug.LogError($"PurchaseManager: Failed to fire loot reward: {e.Message}");
             }
         }
         

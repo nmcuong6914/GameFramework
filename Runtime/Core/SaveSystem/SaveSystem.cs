@@ -1,62 +1,46 @@
 using System;
 using System.IO;
 using System.Threading;
-using System.Threading.Tasks;
 using UnityEngine;
 using Cysharp.Threading.Tasks;
 
 /// <summary>
-/// Cross-platform save system for handling local persistence of player data
-/// Supports Android, iOS, and all other Unity platforms
+/// Cross-platform save system for handling local persistence of serializable data.
+/// Supports Android, iOS, and all other Unity platforms.
 /// </summary>
-public class SaveSystem
+public class SaveSystem<T> where T : class
 {
-    private const string SAVE_FILE_NAME = "playerdata.json";
-    private const string BACKUP_FILE_NAME = "playerdata_backup.json";
+    private const string SAVE_FILE_NAME = "savedata.json";
+    private const string BACKUP_FILE_NAME = "savedata_backup.json";
     private const string SAVE_FOLDER_NAME = "SaveData";
-    private const int MAX_RETRY_ATTEMPTS = 5;
-    private const int RETRY_DELAY_MS = 100;
     
-    private string saveFolderPath;
-    private string saveFilePath;
-    private string backupFilePath;
+    private readonly string saveFolderPath;
+    private readonly string saveFilePath;
+    private readonly string backupFilePath;
     
     // Semaphore to prevent concurrent save operations
     private readonly SemaphoreSlim saveLock = new SemaphoreSlim(1, 1);
     
     // Events
-    public event Action<PlayerData> DataSaved;
-    public event Action<PlayerData> DataLoaded;
+    public event Action<T> DataSaved;
+    public event Action<T> DataLoaded;
     public event Action<string> SaveFailed;
     public event Action<string> LoadFailed;
     
-    public SaveSystem()
+    public SaveSystem(string filename = SAVE_FILE_NAME, string backupFilename = BACKUP_FILE_NAME)
     {
-        InitializePaths();
-    }
-    
-    private void InitializePaths()
-    {
-        // Use Application.persistentDataPath for cross-platform compatibility
-        // This path is writable on all platforms including Android and iOS
         string basePath = Application.persistentDataPath;
         
-        // Platform-specific adjustments
         #if UNITY_ANDROID && !UNITY_EDITOR
-            // On Android, ensure we're using the correct persistent data path
-            // Application.persistentDataPath points to /storage/emulated/0/Android/data/<packagename>/files
             FDebug.Log($"Android persistent data path: {basePath}");
         #elif UNITY_IOS && !UNITY_EDITOR
-            // On iOS, Application.persistentDataPath points to Documents directory
-            // which is backed up to iTunes/iCloud by default
             FDebug.Log($"iOS persistent data path: {basePath}");
         #endif
         
         saveFolderPath = Path.Combine(basePath, SAVE_FOLDER_NAME);
-        saveFilePath = Path.Combine(saveFolderPath, SAVE_FILE_NAME);
-        backupFilePath = Path.Combine(saveFolderPath, BACKUP_FILE_NAME);
+        saveFilePath = Path.Combine(saveFolderPath, filename);
+        backupFilePath = Path.Combine(saveFolderPath, backupFilename);
         
-        // Ensure save directory exists with proper error handling
         try
         {
             if (!Directory.Exists(saveFolderPath))
@@ -68,28 +52,28 @@ public class SaveSystem
         catch (Exception ex)
         {
             FDebug.LogError($"Failed to create save directory: {ex.Message}");
-            // Fallback to root persistent data path if subfolder creation fails
             saveFolderPath = basePath;
-            saveFilePath = Path.Combine(saveFolderPath, SAVE_FILE_NAME);
-            backupFilePath = Path.Combine(saveFolderPath, BACKUP_FILE_NAME);
+            saveFilePath = Path.Combine(saveFolderPath, filename);
+            backupFilePath = Path.Combine(saveFolderPath, backupFilename);
         }
     }
     
     /// <summary>
-    /// Save player data to local storage with cross-platform compatibility
+    /// Save data to local storage with cross-platform compatibility
     /// </summary>
-    public async UniTask<bool> SaveAsync(PlayerData playerData)
+    public async UniTask<bool> SaveAsync(T data)
     {
-        if (playerData == null)
+        if (data == null)
         {
-            FDebug.LogError("Cannot save null PlayerData");
-            SaveFailed?.Invoke("PlayerData is null");
+            FDebug.LogError("Cannot save null data");
+            SaveFailed?.Invoke("Data is null");
             return false;
         }
 
+        await saveLock.WaitAsync();
         try
         {
-            string json = playerData.ToJson();
+            string json = JsonUtility.ToJson(data);
             
             // Create backup of existing save file
             if (File.Exists(saveFilePath))
@@ -101,46 +85,32 @@ public class SaveSystem
                 catch (Exception backupEx)
                 {
                     FDebug.LogWarning($"Failed to create backup: {backupEx.Message}");
-                    // Continue with save even if backup fails
                 }
             }
             
-            // Use atomic save approach with platform-specific handling
             string tempFilePath = saveFilePath + ".tmp";
             
             #if UNITY_ANDROID || UNITY_IOS
-                // On mobile platforms, use direct file writing with proper exception handling
                 await WriteFileAsync(tempFilePath, json);
-                
-                // Atomic move operation
-                if (File.Exists(saveFilePath))
-                {
-                    File.Delete(saveFilePath);
-                }
-                File.Move(tempFilePath, saveFilePath);
             #else
-                // On other platforms, use standard approach
                 await File.WriteAllTextAsync(tempFilePath, json);
-                
-                if (File.Exists(saveFilePath))
-                {
-                    File.Delete(saveFilePath);
-                }
-                File.Move(tempFilePath, saveFilePath);
             #endif
             
-            playerData.NotifyDataSaved();
-            DataSaved?.Invoke(playerData);
+            if (File.Exists(saveFilePath))
+            {
+                File.Delete(saveFilePath);
+            }
+            File.Move(tempFilePath, saveFilePath);
             
-            FDebug.Log($"PlayerData saved successfully to: {saveFilePath}");
+            DataSaved?.Invoke(data);
+            FDebug.Log($"Data saved successfully to: {saveFilePath}");
             return true;
         }
         catch (Exception ex)
         {
-            FDebug.LogError($"Failed to save PlayerData: {ex.Message}");
+            FDebug.LogError($"Failed to save data: {ex.Message}");
             SaveFailed?.Invoke(ex.Message);
             
-            // Clean up temp file if it exists
             try
             {
                 string tempFilePath = saveFilePath + ".tmp";
@@ -156,16 +126,21 @@ public class SaveSystem
             
             return false;
         }
-    }    /// <summary>
-    /// Load player data from local storage with cross-platform compatibility
+        finally
+        {
+            saveLock.Release();
+        }
+    }
+    
+    /// <summary>
+    /// Load data from local storage with cross-platform compatibility
     /// </summary>
-    public async UniTask<PlayerData> LoadAsync()
+    public async UniTask<T> LoadAsync()
     {
         try
         {
             string filePath = saveFilePath;
             
-            // If main save file doesn't exist, try backup
             if (!File.Exists(filePath))
             {
                 if (File.Exists(backupFilePath))
@@ -175,7 +150,7 @@ public class SaveSystem
                 }
                 else
                 {
-                    FDebug.Log("No save file found, creating new PlayerData");
+                    FDebug.Log("No save file found");
                     return null;
                 }
             }
@@ -183,10 +158,8 @@ public class SaveSystem
             string json;
             
             #if UNITY_ANDROID || UNITY_IOS
-                // On mobile platforms, use custom read method for better compatibility
                 json = await ReadFileAsync(filePath);
             #else
-                // On other platforms, use standard method
                 json = await File.ReadAllTextAsync(filePath);
             #endif
             
@@ -196,28 +169,26 @@ public class SaveSystem
                 return null;
             }
             
-            PlayerData playerData = PlayerData.FromJson(json);
+            T data = JsonUtility.FromJson<T>(json);
             
-            if (playerData != null)
+            if (data != null)
             {
-                playerData.NotifyDataLoaded();
-                DataLoaded?.Invoke(playerData);
-                FDebug.Log($"PlayerData loaded successfully from: {filePath}");
+                DataLoaded?.Invoke(data);
+                FDebug.Log($"Data loaded successfully from: {filePath}");
             }
             else
             {
-                FDebug.LogError("Failed to deserialize PlayerData from JSON");
+                FDebug.LogError("Failed to deserialize data from JSON");
                 LoadFailed?.Invoke("Failed to deserialize JSON");
             }
             
-            return playerData;
+            return data;
         }
         catch (Exception ex)
         {
-            FDebug.LogError($"Failed to load PlayerData: {ex.Message}");
+            FDebug.LogError($"Failed to load data: {ex.Message}");
             LoadFailed?.Invoke(ex.Message);
             
-            // Try to load from backup if main file failed
             if (File.Exists(backupFilePath) && saveFilePath != backupFilePath)
             {
                 FDebug.Log("Attempting to load from backup file");
@@ -230,14 +201,13 @@ public class SaveSystem
                         json = await File.ReadAllTextAsync(backupFilePath);
                     #endif
                     
-                    PlayerData playerData = PlayerData.FromJson(json);
+                    T data = JsonUtility.FromJson<T>(json);
                     
-                    if (playerData != null)
+                    if (data != null)
                     {
-                        playerData.NotifyDataLoaded();
-                        DataLoaded?.Invoke(playerData);
-                        FDebug.Log("PlayerData loaded successfully from backup");
-                        return playerData;
+                        DataLoaded?.Invoke(data);
+                        FDebug.Log("Data loaded successfully from backup");
+                        return data;
                     }
                 }
                 catch (Exception backupEx)
@@ -251,9 +221,6 @@ public class SaveSystem
     }
     
     #if UNITY_ANDROID || UNITY_IOS
-    /// <summary>
-    /// Custom file write method for mobile platforms to ensure compatibility
-    /// </summary>
     private async UniTask WriteFileAsync(string filePath, string content)
     {
         using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096, useAsync: true))
@@ -266,9 +233,6 @@ public class SaveSystem
         }
     }
     
-    /// <summary>
-    /// Custom file read method for mobile platforms to ensure compatibility
-    /// </summary>
     private async UniTask<string> ReadFileAsync(string filePath)
     {
         using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 4096, useAsync: true))
@@ -281,17 +245,11 @@ public class SaveSystem
     }
     #endif
     
-    /// <summary>
-    /// Check if save file exists
-    /// </summary>
     public bool SaveFileExists()
     {
         return File.Exists(saveFilePath) || File.Exists(backupFilePath);
     }
     
-    /// <summary>
-    /// Delete save file (use with caution)
-    /// </summary>
     public bool DeleteSaveFile()
     {
         try
@@ -316,9 +274,6 @@ public class SaveSystem
         }
     }
     
-    /// <summary>
-    /// Get save file size in bytes
-    /// </summary>
     public long GetSaveFileSize()
     {
         if (File.Exists(saveFilePath))
@@ -328,9 +283,6 @@ public class SaveSystem
         return 0;
     }
     
-    /// <summary>
-    /// Get last save time
-    /// </summary>
     public DateTime? GetLastSaveTime()
     {
         if (File.Exists(saveFilePath))
@@ -340,20 +292,17 @@ public class SaveSystem
         return null;
     }
     
-    /// <summary>
-    /// Create manual backup with cross-platform compatibility
-    /// </summary>
-    public async UniTask<bool> CreateBackupAsync(PlayerData playerData, string backupSuffix = null)
+    public async UniTask<bool> CreateBackupAsync(T data, string backupSuffix = null)
     {
-        if (playerData == null) return false;
+        if (data == null) return false;
         
         try
         {
             string suffix = backupSuffix ?? DateTime.Now.ToString("yyyyMMdd_HHmmss");
-            string backupFileName = $"playerdata_backup_{suffix}.json";
+            string backupFileName = $"savedata_backup_{suffix}.json";
             string backupPath = Path.Combine(saveFolderPath, backupFileName);
             
-            string json = playerData.ToJson();
+            string json = JsonUtility.ToJson(data);
             
             #if UNITY_ANDROID || UNITY_IOS
                 await WriteFileAsync(backupPath, json);
@@ -371,9 +320,6 @@ public class SaveSystem
         }
     }
     
-    /// <summary>
-    /// Get platform information for debugging
-    /// </summary>
     public string GetPlatformInfo()
     {
         return $"Platform: {Application.platform}, " +
@@ -381,17 +327,11 @@ public class SaveSystem
                $"Save Folder: {saveFolderPath}";
     }
     
-    /// <summary>
-    /// Get the save folder path (for editor tools)
-    /// </summary>
     public string GetSaveFolderPath()
     {
         return saveFolderPath;
     }
     
-    /// <summary>
-    /// Get the main save file path (for editor tools)
-    /// </summary>
     public string GetSaveFilePath()
     {
         return saveFilePath;

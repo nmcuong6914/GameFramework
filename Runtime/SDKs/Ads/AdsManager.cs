@@ -36,7 +36,7 @@ namespace BlockSort.Ads
         private LevelPlayRewardedAd rewardedAd;
         
         // Services
-        private PlayerDataManager playerDataManager;
+        private IAdDataProvider dataProvider;
         private SignalBus signalBus;
 
         // Events
@@ -315,9 +315,9 @@ namespace BlockSort.Ads
             }
 
             // Track ad show in PlayerData for daily limit
-            if (playerDataManager != null && playerDataManager.PlayerData != null)
+            if (dataProvider != null)
             {
-                playerDataManager.PlayerData.IncrementAdShowCount(placementName);
+                dataProvider.IncrementAdShowCount(placementName);
             }
 
             // Trigger events
@@ -366,16 +366,16 @@ namespace BlockSort.Ads
 
             adsConfig = config;
 
-            // Get PlayerDataManager reference
-            playerDataManager = ServiceLocator.TryResolve<PlayerDataManager>();
-            if (playerDataManager == null)
+            // Get IAdDataProvider reference
+            dataProvider = ServiceLocator.TryResolve<IAdDataProvider>();
+            if (dataProvider == null)
             {
-                Debug.LogWarning("AdsManager: PlayerDataManager not found! Level-based ad placement checks will use level 0.");
+                Debug.LogWarning("AdsManager: IAdDataProvider not found! Level-based ad placement checks will use level 0.");
             }
             else
             {
                 // Reset daily ad counters on initialization
-                playerDataManager.PlayerData?.ResetDailyAdCounters();
+                dataProvider.ResetDailyAdCounters();
             }
             
             // Get SignalBus reference and subscribe to ad signals
@@ -466,9 +466,9 @@ namespace BlockSort.Ads
 
             // Get current level from PlayerDataManager if available
             int currentLevel = 0;
-            if (playerDataManager != null)
+            if (dataProvider != null)
             {
-                currentLevel = playerDataManager.PlayerData.CurrentLevelIndex;
+                currentLevel = dataProvider.CurrentLevelIndex;
             }
 
             ShowInterstitial(signal.Placement, signal.OnClosed);
@@ -488,9 +488,9 @@ namespace BlockSort.Ads
 
             // Get current level from PlayerDataManager if available
             int currentLevel = 0;
-            if (playerDataManager != null)
+            if (dataProvider != null)
             {
-                currentLevel = playerDataManager.PlayerData.CurrentLevelIndex;
+                currentLevel = dataProvider.CurrentLevelIndex;
             }
 
             // Use polymorphic condition checking
@@ -518,7 +518,7 @@ namespace BlockSort.Ads
         public async void ShowInterstitial(string placement, Action onClosed = null)
         {
             // Check if player is paid - paid users don't see interstitial ads
-            if (playerDataManager != null && playerDataManager.PlayerData != null && playerDataManager.PlayerData.IsPaid)
+            if (dataProvider != null && dataProvider.IsPaid)
             {
                 if (adsConfig.enableDebugLogs)
                     Debug.Log($"AdsManager: Interstitial ad blocked for placement '{placement}' - player has made IAP purchase");
@@ -573,9 +573,9 @@ namespace BlockSort.Ads
             placementCooldowns[placement] = Time.unscaledTime;
             
             // Track ad show in PlayerData for daily limit
-            if (playerDataManager != null && playerDataManager.PlayerData != null)
+            if (dataProvider != null)
             {
-                playerDataManager.PlayerData.IncrementAdShowCount(placement);
+                dataProvider.IncrementAdShowCount(placement);
             }
         }
 
@@ -626,9 +626,9 @@ namespace BlockSort.Ads
             
             // Get current level from PlayerDataManager
             int currentLevel = 0;
-            if (playerDataManager?.PlayerData != null)
+            if (dataProvider != null)
             {
-                currentLevel = playerDataManager.PlayerData.CurrentLevelIndex;
+                currentLevel = dataProvider.CurrentLevelIndex;
             }
             
             if (adsConfig.enableDebugLogs)
@@ -680,9 +680,9 @@ namespace BlockSort.Ads
             // Check daily limits (tracked in PlayerData)
             if (placementData != null && placementData.maxShowPerDay > 0)
             {
-                if (playerDataManager != null && playerDataManager.PlayerData != null)
+                if (dataProvider != null)
                 {
-                    int showCountToday = playerDataManager.GetAdShowCountToday(placement);
+                    int showCountToday = dataProvider.GetAdShowCountToday(placement);
                     if (showCountToday >= placementData.maxShowPerDay)
                         return false;
                 }
@@ -798,9 +798,9 @@ namespace BlockSort.Ads
             
             // Get current level from PlayerDataManager
             int currentLevel = 0;
-            if (playerDataManager?.PlayerData != null)
+            if (dataProvider != null)
             {
-                currentLevel = playerDataManager.PlayerData.CurrentLevelIndex;
+                currentLevel = dataProvider.CurrentLevelIndex;
             }
             
             if (adsConfig.enableDebugLogs)
@@ -833,9 +833,9 @@ namespace BlockSort.Ads
             // Check daily limits (tracked in PlayerData)
             if (placementData != null && placementData.maxShowPerDay > 0)
             {
-                if (playerDataManager != null && playerDataManager.PlayerData != null)
+                if (dataProvider != null)
                 {
-                    int showCountToday = playerDataManager.GetAdShowCountToday(placement);
+                    int showCountToday = dataProvider.GetAdShowCountToday(placement);
                     if (showCountToday >= placementData.maxShowPerDay)
                         return false;
                 }

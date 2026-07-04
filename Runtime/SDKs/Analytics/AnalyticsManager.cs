@@ -15,7 +15,7 @@ namespace Analytics
     {
         private List<IAnalyticsService> analyticsServices = new List<IAnalyticsService>();
         private bool isInitialized = false;
-        private PlayerDataManager playerDataManager;
+        private IAnalyticsDataProvider dataProvider;
         
         /// <summary>
         /// Backward compatibility: Get instance from ServiceLocator
@@ -67,12 +67,12 @@ namespace Analytics
             // Wait a frame to ensure other services are registered
             await UniTask.Yield();
             
-            // Cache PlayerDataManager reference
-            playerDataManager = ServiceLocator.TryResolve<PlayerDataManager>();
+            // Cache Analytics data provider reference
+            dataProvider = ServiceLocator.TryResolve<IAnalyticsDataProvider>();
             
-            if (playerDataManager == null)
+            if (dataProvider == null)
             {
-                Debug.LogWarning("[AnalyticsManager] PlayerDataManager not available at initialization");
+                Debug.LogWarning("[AnalyticsManager] IAnalyticsDataProvider not available at initialization");
             }
         }
         
@@ -121,38 +121,36 @@ namespace Analytics
         {
             var enrichedParams = parameters != null ? new Dictionary<string, object>(parameters) : new Dictionary<string, object>();
             
-            // Try to resolve PlayerDataManager if not cached yet
-            if (playerDataManager == null)
+            // Try to resolve data provider if not cached yet
+            if (dataProvider == null)
             {
-                playerDataManager = ServiceLocator.TryResolve<PlayerDataManager>();
+                dataProvider = ServiceLocator.TryResolve<IAnalyticsDataProvider>();
             }
             
-            if (playerDataManager != null && playerDataManager.PlayerData != null)
+            if (dataProvider != null)
             {
                 // Add level index if not already present
                 if (!enrichedParams.ContainsKey(GameAnalyticsEvents.PARAM_LEVEL_INDEX))
                 {
-                    enrichedParams[GameAnalyticsEvents.PARAM_LEVEL_INDEX] = playerDataManager.GetCurrentLevelIndex();
+                    enrichedParams[GameAnalyticsEvents.PARAM_LEVEL_INDEX] = dataProvider.GetCurrentLevelIndex();
                 }
                 
-                // Add retention day if not already present - this is now a default parameter for all events
+                // Add retention day if not already present
                 if (!enrichedParams.ContainsKey(GameAnalyticsEvents.PARAM_RETENTION_DAY))
                 {
-                    // Update retention on every login session and get current retention day
-                    var retentionDay = playerDataManager.PlayerData.GetRetentionDay();
-                    enrichedParams[GameAnalyticsEvents.PARAM_RETENTION_DAY] = retentionDay;
+                    enrichedParams[GameAnalyticsEvents.PARAM_RETENTION_DAY] = dataProvider.GetRetentionDay();
                 }
                 
-                // Add coins if not already present - default parameter for all events
+                // Add coins if not already present
                 if (!enrichedParams.ContainsKey(GameAnalyticsEvents.PARAM_COINS))
                 {
-                    enrichedParams[GameAnalyticsEvents.PARAM_COINS] = playerDataManager.GetCurrencyAmount(CurrencyType.Coin);
+                    enrichedParams[GameAnalyticsEvents.PARAM_COINS] = dataProvider.GetCoinCount();
                 }
                 
-                // Add lives if not already present - default parameter for all events
+                // Add lives if not already present
                 if (!enrichedParams.ContainsKey(GameAnalyticsEvents.PARAM_LIVES))
                 {
-                    enrichedParams[GameAnalyticsEvents.PARAM_LIVES] = playerDataManager.GetCurrencyAmount(CurrencyType.Lives);
+                    enrichedParams[GameAnalyticsEvents.PARAM_LIVES] = dataProvider.GetLivesCount();
                 }
             }
             
